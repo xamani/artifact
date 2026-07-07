@@ -1,0 +1,9 @@
+bin/
+/artifact
+*.exe
+*.test
+*.out
+.idea/
+.vscode/
+configs/config.yaml
+.DS_Store
