@@ -1,14 +1,19 @@
-# artifact
+# Artifact
 
 REST API for upload/batch-upload/download/list/delete of Linux artifact files. MinIO for storage.
 
 ## Run
 
 ```bash
-# MinIO must be reachable (endpoint from config)
+docker compose up --build -d
+curl http://localhost:8080/health
+```
+
+Local without Docker:
+
+```bash
 cp configs/config.example.yaml configs/config.yaml
 go run ./cmd --config configs/config.yaml
-curl http://localhost:8080/health
 ```
 
 ## Tests
@@ -18,11 +23,13 @@ go test ./...
 go test -tags=integration ./test/integration/...
 ```
 
-Integration test needs MinIO running. Unit tests cover validation and config.
+Integration test needs MinIO running (`docker compose up -d`). Unit tests cover validation and config.
 
 ## Config
 
 Copy `configs/config.example.yaml` → `configs/config.yaml` for local.
+
+Docker uses `configs/config.docker.yaml`.
 
 ## API
 
