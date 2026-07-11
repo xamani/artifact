@@ -12,7 +12,7 @@ type FileValidateRules struct {
 }
 
 func CheckFileExtension(filename string, rules FileValidateRules) error {
-	ext := fileExtension(filename)
+	ext := FileExtension(filename, rules.AllowedExtensions)
 	if ext == "" {
 		return NewRichError(ErrFileNotValid, "file has no extension", map[string]string{
 			"field":  "filename",
@@ -21,7 +21,7 @@ func CheckFileExtension(filename string, rules FileValidateRules) error {
 		})
 	}
 	for _, a := range rules.AllowedExtensions {
-		if ext == strings.ToLower(a) {
+		if ext == strings.ToLower(strings.TrimSpace(a)) {
 			return nil
 		}
 	}
@@ -60,4 +60,22 @@ func ValidateUploadFile(filename string, size int64, rules FileValidateRules) er
 
 func fileExtension(filename string) string {
 	return strings.ToLower(filepath.Ext(filepath.Base(filename)))
+}
+
+func FileExtension(filename string, allowed []string) string {
+	base := strings.ToLower(filepath.Base(filename))
+	longest := ""
+	for _, ext := range allowed {
+		ext = strings.ToLower(strings.TrimSpace(ext))
+		if ext == "" {
+			continue
+		}
+		if strings.HasSuffix(base, ext) && len(ext) > len(longest) {
+			longest = ext
+		}
+	}
+	if longest != "" {
+		return longest
+	}
+	return fileExtension(filename)
 }

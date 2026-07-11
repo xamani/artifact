@@ -8,7 +8,9 @@ RUN CGO_ENABLED=0 go build -o /artifact ./cmd
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates
+RUN addgroup -S artifact && adduser -S artifact -G artifact
 WORKDIR /app
 COPY --from=builder /artifact .
+USER artifact
 EXPOSE 8080
 ENTRYPOINT ["/app/artifact"]

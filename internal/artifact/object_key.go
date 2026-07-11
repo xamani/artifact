@@ -16,15 +16,15 @@ type ObjectKeyInput struct {
 	UploadTime time.Time
 }
 
-// layout: {prefix}/YYYY/MM/os/arch/{sha8}/filename
+// layout: {prefix}/YYYY/MM/os/arch/{sha16}/filename
 func GenerateObjectKey(in ObjectKeyInput) string {
 	t := in.UploadTime.UTC()
 	if t.IsZero() {
 		t = time.Now().UTC()
 	}
 	hashPrefix := in.Sha256
-	if len(hashPrefix) > 8 {
-		hashPrefix = hashPrefix[:8]
+	if len(hashPrefix) > 16 {
+		hashPrefix = hashPrefix[:16]
 	}
 	year := fmt.Sprintf("%04d", t.Year())
 	month := fmt.Sprintf("%02d", int(t.Month()))

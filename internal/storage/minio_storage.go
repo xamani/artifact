@@ -44,7 +44,7 @@ func (m *MinioStorage) HealthCheck(ctx context.Context) error {
 	return nil
 }
 
-// called on /health 
+// called on /health
 func (m *MinioStorage) EnsureBucketExists(ctx context.Context) error {
 	exists, err := m.client.BucketExists(ctx, m.bucket)
 	if err != nil {

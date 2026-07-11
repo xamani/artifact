@@ -1,13 +1,16 @@
 package handler
 
 import (
-	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"artifact/internal/artifact"
 	"artifact/internal/service"
@@ -20,6 +23,7 @@ type Handler struct {
 }
 
 const uploadUserHeader = "X-Upload-User"
+const requestIDHeader = "X-Request-ID"
 
 func NewHandler(svc *service.ArtifactService) *Handler {
 	return &Handler{svc: svc}
@@ -29,6 +33,8 @@ func NewRouter(svc *service.ArtifactService, apiKey string) *echo.Echo {
 	e := echo.New()
 	e.HideBanner = true
 	e.HTTPErrorHandler = customHTTPErrorHandler
+	e.Use(recoverPanic)
+	e.Use(logRequest)
 
 	h := NewHandler(svc)
 
@@ -44,6 +50,54 @@ func NewRouter(svc *service.ArtifactService, apiKey string) *echo.Echo {
 	art.GET("/*", h.HandleDownloadFile)
 
 	return e
+}
+
+func recoverPanic(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) (err error) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				slog.Error("panic recovered", "panic", recovered)
+				err = echo.NewHTTPError(http.StatusInternalServerError, ErrorBody{
+					Error:   "internal_error",
+					Message: "request failed",
+				})
+			}
+		}()
+		return next(c)
+	}
+}
+
+func logRequest(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		start := time.Now()
+		requestID := c.Request().Header.Get(requestIDHeader)
+		if requestID == "" {
+			requestID = newRequestID()
+		}
+		c.Response().Header().Set(requestIDHeader, requestID)
+
+		err := next(c)
+		if err != nil {
+			c.Error(err)
+		}
+		slog.Info("request",
+			"request_id", requestID,
+			"method", c.Request().Method,
+			"uri", c.Request().URL.RequestURI(),
+			"status", c.Response().Status,
+			"latency", time.Since(start),
+			"error", err,
+		)
+		return nil
+	}
+}
+
+func newRequestID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return strconv.FormatInt(time.Now().UnixNano(), 36)
+	}
+	return hex.EncodeToString(b[:])
 }
 
 func customHTTPErrorHandler(err error, c echo.Context) {
@@ -115,6 +169,12 @@ func (h *Handler) HandleUploadBatch(c echo.Context) error {
 	}
 
 	inputs := make([]service.UploadInput, 0, len(files))
+	closers := make([]io.Closer, 0, len(files))
+	defer func() {
+		for _, closer := range closers {
+			_ = closer.Close()
+		}
+	}()
 	for _, f := range files {
 		src, err := f.Open()
 		if err != nil {
@@ -122,17 +182,11 @@ func (h *Handler) HandleUploadBatch(c echo.Context) error {
 				"file": f.Filename, "reason": "file_not_readable",
 			})
 		}
-		data, err := io.ReadAll(src)
-		src.Close()
-		if err != nil {
-			return artifact.NewRichError(artifact.ErrFileNotValid, "cannot read uploaded file", map[string]string{
-				"file": f.Filename, "reason": "file_not_readable",
-			})
-		}
+		closers = append(closers, src)
 		inputs = append(inputs, service.UploadInput{
 			Filename:   f.Filename,
 			Size:       f.Size,
-			Reader:     bytes.NewReader(data),
+			Reader:     src,
 			UploadUser: c.Request().Header.Get(uploadUserHeader),
 		})
 	}
@@ -141,7 +195,11 @@ func (h *Handler) HandleUploadBatch(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusCreated, map[string]any{"artifacts": results})
+	status := http.StatusCreated
+	if len(results.Errors) > 0 {
+		status = http.StatusMultiStatus
+	}
+	return c.JSON(status, results)
 }
 
 func (h *Handler) HandleGetArtifactList(c echo.Context) error {
